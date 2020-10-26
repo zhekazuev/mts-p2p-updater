@@ -1,4 +1,5 @@
 /venv/
+/logs/
 .idea
 config.py
 *.tgz
