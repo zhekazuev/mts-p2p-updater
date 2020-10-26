@@ -12,7 +12,7 @@ def create_logger():
         level="INFO",
         format="<light-cyan>{time:MM-DD-YYYY HH:mm:ss}</light-cyan> | "
                "<light-green>{level}</light-green>: \
-               <light-blue>{message}</light-blue>")
+               <light-magenta>{message}</light-magenta>")
     custom_logger.add(
         'logs/errors.log',
         colorize=True,
