@@ -1,8 +1,8 @@
 """Client to handle connections and actions executed against a remote host.
 Original repo - https://github.com/hackersandslackers/paramiko-tutorial
 Information - https://hackersandslackers.com/automate-ssh-scp-python-paramiko/"""
-from paramiko import SSHClient, AutoAddPolicy
 from paramiko.auth_handler import AuthenticationException, SSHException
+from paramiko import SSHClient, AutoAddPolicy, SFTPError
 from log import logger
 import time
 
@@ -18,9 +18,15 @@ class RemoteClient:
         self.remote_path = remote_path
         self.client = None
         self.channel = None
-        self.scp = None
+        self.sftp = None
         self.conn = None
         # self._upload_ssh_key()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.disconnect()
 
     # @logger.catch
     # def _get_ssh_key(self):
@@ -42,7 +48,7 @@ class RemoteClient:
     #         logger.error(error)
 
     @logger.catch
-    def _connect(self):
+    def __connect(self):
         """Open connection to remote host. """
         if self.conn is None:
             try:
@@ -54,7 +60,7 @@ class RemoteClient:
                     username=self.user,
                     password=self.password,
                     # key_filename=self.ssh_key_filepath,
-                    look_for_keys=True,
+                    # look_for_keys=True,
                     timeout=5000
                 )
             except AuthenticationException as error:
@@ -88,8 +94,8 @@ class RemoteClient:
         """Close ssh connection."""
         if self.client:
             self.client.close()
-        if self.scp:
-            self.scp.close()
+        if self.sftp:
+            self.sftp.close()
 
     # @logger.catch
     # def bulk_upload(self, files):
@@ -103,27 +109,69 @@ class RemoteClient:
     #     uploads = [self._upload_single_file(file) for file in files]
     #     logger.info(f'Finished uploading {len(uploads)} files to {self.remote_path} on {self.host}')
 
-    # def _upload_single_file(self, file):
-    #     """Upload a single file to a remote directory."""
-    #     upload = None
-    #     try:
-    #         self.scp.put(
-    #             file,
-    #             recursive=True,
-    #             remote_path=self.remote_path
-    #         )
-    #         upload = file
-    #     except SCPException as error:
-    #         logger.error(error)
-    #         raise error
-    #     finally:
-    #         logger.info(f'Uploaded {file} to {self.remote_path}')
-    #         return upload
+    @logger.catch
+    def bulk_upload(self, files):
+        """
+        Upload multiple files to a remote directory.
+        :param files: List of local files to be uploaded.
+        :type files: List[str]
+        """
+        self.conn = self.__connect()
+        uploads = [self.__upload_single_file(self.host, file, self.remote_path) for file in files]
+        logger.info(f'Finished uploading {len(uploads)} files to {self.remote_path} on {self.host}')
 
-    def download_file(self, file):
+    def __upload_single_file(self, hostname, file, remote_path, pause=0):
+        """Upload a single file to a remote directory."""
+        upload = None
+        self.sftp = self.__connect().open_sftp()
+        try:
+            self.sftp.put(file, remote_path)
+            time.sleep(pause)
+            upload = file
+            self.sftp.close()
+        except SFTPError as error:
+            logger.error(error)
+            raise error
+        finally:
+            logger.info(f'{hostname}: Uploaded {file} to {remote_path}')
+            self.sftp.close()
+            return upload
+
+    @logger.catch
+    def upload_file(self, hostname, file, remote_path, pause=0):
+        """Upload a single file to a remote directory."""
+        upload = None
+        self.sftp = self.__connect().open_sftp()
+        try:
+            self.sftp.put(file, remote_path)
+            time.sleep(pause)
+            upload = file
+            self.sftp.close()
+        except SFTPError as error:
+            logger.error(error)
+            raise error
+        finally:
+            logger.info(f'{hostname}: Uploaded {file} to {remote_path}')
+            self.sftp.close()
+            return upload
+
+    @logger.catch
+    def download_file(self, hostname, remote_path, local_path, pause=0):
         """Download file from remote host."""
-        self.conn = self._connect()
-        self.scp.get(file)
+        download = None
+        self.sftp = self.__connect().open_sftp()
+        try:
+            self.sftp.get(remote_path, local_path)
+            time.sleep(pause)
+            download = local_path
+            self.sftp.close()
+        except SFTPError as error:
+            logger.error(error)
+            raise error
+        finally:
+            logger.info(f'{hostname}: Downloaded {local_path} from {remote_path}')
+            self.sftp.close()
+            return download
 
     @logger.catch
     def execute_commands(self, commands):
@@ -133,7 +181,7 @@ class RemoteClient:
         :param commands: List of unix commands as strings.
         :type commands: List[str]
         """
-        self.conn = self._connect()
+        self.conn = self.__connect()
         responses = ""
         for cmd in commands:
             stdin, stdout, stderr = self.client.exec_command(cmd)
@@ -158,7 +206,8 @@ class RemoteClient:
         :param buffer: Max recv buffer
         :type buffer: int
         """
-        self.channel = self._shell_connect()
+        self.conn = self.__connect()
+        self.channel = self.conn.invoke_shell()
         responses = ""
         for cmd in commands:
             self.channel.send(cmd)
