@@ -46,9 +46,9 @@ def main(path, p):
     Input path, for example:
     /opt/scripts/Python/p2pupdater/patch_libp2p-2.51.1246.so.tgz
     Full command example:
-    python3.6 update.py /opt/scripts/Python/p2pupdater/patch_libp2p-2.51.1246.so.tgz
+    python3.6 multiupdate.py /opt/scripts/Python/p2pupdater/patch_libp2p-2.51.1246.so.tgz
     or
-    python3.6 update.py patch_libp2p-2.51.1246.so.tgz
+    python3.6 multiupdate.py patch_libp2p-2.51.1246.so.tgz
     """
     devices = config.StarOS.all_hosts
 
